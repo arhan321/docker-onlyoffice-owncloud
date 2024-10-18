@@ -1,0 +1,108 @@
+version: '3'
+services:
+  app:
+    container_name: app-server
+    image: owncloud/server
+    stdin_open: true
+    tty: true
+    restart: always
+    expose:
+      - '80'
+      - '8080'
+    networks:
+      - onlyoffice
+    environment:
+      - OWNCLOUD_TRUSTED_DOMAINS=localhost,nginx-server
+      - OWNCLOUD_DOMAIN=${OWNCLOUD_DOMAIN}
+      - OWNCLOUD_TRUSTED_DOMAINS=${OWNCLOUD_TRUSTED_DOMAINS}
+      - OWNCLOUD_ADMIN_USERNAME=${ADMIN_USERNAME}
+      - OWNCLOUD_ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - OWNCLOUD_DB_TYPE=mysql
+      - OWNCLOUD_DB_NAME=${DB_NAME}
+      - OWNCLOUD_DB_USERNAME=root
+      - OWNCLOUD_DB_PASSWORD=${DB_PASSWORD}
+      - OWNCLOUD_DB_HOST=db
+      - OWNCLOUD_MYSQL_UTF8MB4=true
+      - OWNCLOUD_REDIS_ENABLED=true
+      - OWNCLOUD_REDIS_HOST=redis
+    volumes:
+      - ./onlyoffice:/tmp/onlyoffice
+      - ./run.sh:/run.sh
+      - ./files:/mnt/data
+    command: bash /run.sh
+
+  onlyoffice-document-server:
+    container_name: onlyoffice-document-server
+    image: onlyoffice/documentserver:latest
+    stdin_open: true
+    tty: true
+    restart: always
+    networks:
+      - onlyoffice
+    environment:
+      - JWT_SECRET=secret
+    expose:
+      - '80'
+      - '443'
+    volumes:
+      - document_data:/var/www/onlyoffice/Data
+      - document_log:/var/log/onlyoffice
+
+  nginx:
+    container_name: nginx-server
+    image: nginx
+    stdin_open: true
+    tty: true
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - onlyoffice
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+
+  oc-db:
+    image: mariadb:10.11
+    container_name: db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASS}
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+    command: ["--max-allowed-packet=128M", "--innodb-log-file-size=64M"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-u", "root", "--password=${DB_ROOT_PASS}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./db:/var/lib/mysql
+    networks:
+      - onlyoffice
+    ports:
+      - "23306:3306" 
+
+  oc-redis:
+    image: redis:6
+    container_name: redis
+    restart: unless-stopped
+    command: ["--databases", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - ./redis:/data
+    networks:
+      - onlyoffice
+
+networks:
+  onlyoffice:
+    driver: bridge
+
+volumes:
+  document_data:
+  document_log:
